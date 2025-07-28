@@ -98,7 +98,6 @@ The GitHub Actions workflow includes:
    - Rolls out new deployment with zero-downtime
    - Verifies health checks
 
-![Pipeline Stages](https://i.imgur.com/8X9qZyG.png)
 
 ## Project Structure
 
