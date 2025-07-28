@@ -1,0 +1,34 @@
+#### `kubernetes/04-laravel-deployment.yaml`
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-app
+  namespace: laravel-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      containers:
+      - name: laravel
+        image: <DOCKER_REPO>/laravel-app:latest
+        ports:
+        - containerPort: 9000
+        envFrom:
+        - configMapRef:
+            name: laravel-eks-config
+        - secretRef:
+            name: laravel-eks-secrets
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"

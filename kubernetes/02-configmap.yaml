@@ -1,0 +1,11 @@
+#### `kubernetes/02-configmap.yaml`
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: laravel-config
+  namespace: laravel-app
+data:
+  APP_ENV: production
+  APP_DEBUG: "false"
+  REDIS_HOST: "redis-service"
