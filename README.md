@@ -29,8 +29,6 @@ Before you begin, ensure you have:
 
 ## Architecture
 
-![Architecture Diagram](https://i.imgur.com/JKQ4X7m.png)
-
 ```
 Internet → AWS ALB Ingress → Nginx Pods → Laravel Pods → Redis Service
 ```
