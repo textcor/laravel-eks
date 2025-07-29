@@ -1,4 +1,3 @@
-#### `.github/workflows/deploy-eks.yaml`
 name: Deploy to EKS
 
 on:
