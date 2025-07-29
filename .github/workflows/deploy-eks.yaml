@@ -3,6 +3,7 @@ name: Deploy to EKS
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 env:
   AWS_REGION: us-east-1
@@ -10,62 +11,75 @@ env:
   DOCKER_IMAGE: ${{ secrets.DOCKER_REPO }}/laravel-app:${{ github.sha }}
 
 jobs:
-  deploy:
-    needs: build-test
+  # Independent job that runs first
+  validate:
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Validate workflow
+        run: echo "Workflow syntax is valid"
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
+  build-test:
+    runs-on: ubuntu-latest
+    needs: validate  # Optional dependency
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/php/Dockerfile
+          push: false
+          tags: ${{ env.DOCKER_IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Run tests
+        run: docker run --rm ${{ env.DOCKER_IMAGE }} php artisan test
 
-    - name: Login to Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKER_HUB_USERNAME }}
-        password: ${{ secrets.DOCKER_HUB_TOKEN }}
-
-    - name: Build and Push Docker Image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: docker/php/Dockerfile
-        push: true
-        tags: |
-          ${{ env.DOCKER_IMAGE }}
-          ${{ secrets.DOCKER_REPO }}/laravel-app:latest
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    - name: Install kubectl and awscli
-      run: |
-        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-        chmod +x kubectl
-        sudo mv kubectl /usr/local/bin/
-        sudo apt-get update && sudo apt-get install -y awscli
-
-    - name: Configure kubeconfig
-      run: |
-        aws eks update-kubeconfig \
-          --name ${{ env.EKS_CLUSTER_NAME }} \
-          --region ${{ env.AWS_REGION }}
-
-    - name: Deploy to Kubernetes
-      run: |
-        # Apply all Kubernetes manifests
-        kubectl apply -f kubernetes/
-
-        # Update image
-        kubectl set image deployment/laravel-app laravel=${{ env.DOCKER_IMAGE }} -n laravel-app
-
-        # Wait for rollout
-        kubectl rollout status deployment/laravel-app -n laravel-app
-
-        # Get ingress endpoint
-        echo "Application URL:"
-        kubectl get ingress laravel-ingress -n laravel-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  deploy:
+    needs: [validate, build-test]  # Now depends on two jobs
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/php/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_IMAGE }}
+            ${{ secrets.DOCKER_REPO }}/laravel-app:latest
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+      - name: Configure EKS
+        run: |
+          aws eks update-kubeconfig \
+            --name ${{ env.EKS_CLUSTER_NAME }} \
+            --region ${{ env.AWS_REGION }}
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f kubernetes/
+          kubectl set image deployment/laravel-app laravel=${{ env.DOCKER_IMAGE }} -n laravel-app
+          kubectl rollout status deployment/laravel-app -n laravel-app
+          echo "Application URL:"
+          kubectl get ingress laravel-ingress -n laravel-app -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
