@@ -12,8 +12,7 @@ spec:
     metadata:
       labels:
         app: nginx
-    spec:
-      containers:
+    containers:
       - name: nginx
         image: nginx:alpine
         ports:
@@ -23,7 +22,7 @@ spec:
           mountPath: /etc/nginx/conf.d
         - name: app-code
           mountPath: /var/www
-      volumes:
+    volumes:
       - name: nginx-config
         configMap:
           name: nginx-config
